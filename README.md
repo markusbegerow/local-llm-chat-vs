@@ -15,6 +15,7 @@
 </div>
 
 ---
+<img src="https://github.com/markusbegerow/local-llm-chat-vs/blob/702ca02ee63646ffae1cdb13e145b269a337dc1b/Resources/local-llm-chat-visualstudio.png">
 
 ## Features
 
