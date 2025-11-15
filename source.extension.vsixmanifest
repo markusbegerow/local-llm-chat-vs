@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
-    <Identity Id="LocalLLMChatVS.a1b2c3d4e5f6" Version="1.0.0" Language="en-US" Publisher="Markus Begerow" />
+    <Identity Id="LocalLLMChatVS.a1b2c3d4e5f6" Version="1.0.1" Language="en-US" Publisher="Markus Begerow" />
     <DisplayName>Local LLM Chat for Visual Studio</DisplayName>
     <Description xml:space="preserve">Secure chat with local LLMs and create files in your workspace with AI assistance. Compatible with Ollama, OpenAI, and other OpenAI-compatible APIs.</Description>
     <MoreInfo>https://github.com/markusbegerow/local-llm-chat-vs</MoreInfo>
