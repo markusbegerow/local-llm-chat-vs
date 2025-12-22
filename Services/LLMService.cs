@@ -114,7 +114,7 @@ namespace LocalLLMChatVS.Services
         {
             if (messages.Count <= maxMessages)
             {
-                return messages;
+                return new List<ChatMessage>(messages);
             }
 
             // Always keep the system message if present
