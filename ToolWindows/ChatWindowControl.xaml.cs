@@ -40,6 +40,13 @@ namespace LocalLLMChatVS.ToolWindows
             return (GeneralOptions)package.GetDialogPage(typeof(GeneralOptions));
         }
 
+        private void CopyButton_Click(object sender, RoutedEventArgs e)
+        {
+            var msg = (sender as Button)?.DataContext as MessageDisplay;
+            if (msg != null)
+                Clipboard.SetText(msg.Content);
+        }
+
         private void ClearButton_Click(object sender, RoutedEventArgs e)
         {
             displayMessages.Clear();
@@ -54,8 +61,8 @@ namespace LocalLLMChatVS.ToolWindows
 
         private void InputTextBox_KeyDown(object sender, KeyEventArgs e)
         {
-            // Ctrl+Enter or Cmd+Enter to send
-            if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            // Enter to send, Shift+Enter for new line
+            if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None)
             {
                 e.Handled = true;
                 _ = SendMessageAsync();

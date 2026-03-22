@@ -69,14 +69,37 @@
                                 </Style>
                             </Border.Style>
                             <StackPanel>
-                                <TextBlock Text="{Binding Role}"
-                                           FontWeight="Bold"
-                                           FontSize="10"
-                                           Margin="0,0,0,5"
-                                           Foreground="{DynamicResource {x:Static vsui:EnvironmentColors.ToolWindowTextBrushKey}}"/>
-                                <TextBlock Text="{Binding Content}"
-                                           TextWrapping="Wrap"
-                                           Foreground="{DynamicResource {x:Static vsui:EnvironmentColors.ToolWindowTextBrushKey}}"/>
+                                <DockPanel Margin="0,0,0,5">
+                                    <Button Content="Copy"
+                                            DockPanel.Dock="Right"
+                                            FontSize="10"
+                                            Padding="5,1"
+                                            Click="CopyButton_Click">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Role}" Value="assistant">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                    <TextBlock Text="{Binding Role}"
+                                               FontWeight="Bold"
+                                               FontSize="10"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource {x:Static vsui:EnvironmentColors.ToolWindowTextBrushKey}}"/>
+                                </DockPanel>
+                                <TextBox Text="{Binding Content}"
+                                         TextWrapping="Wrap"
+                                         IsReadOnly="True"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         Padding="0"
+                                         IsTabStop="False"
+                                         Foreground="{DynamicResource {x:Static vsui:EnvironmentColors.ToolWindowTextBrushKey}}"/>
                             </StackPanel>
                         </Border>
                     </DataTemplate>
@@ -115,7 +138,7 @@
                             Click="SendButton_Click"
                             Padding="15,5"
                             MinWidth="80"/>
-                    <TextBlock Text="Ctrl+Enter to send | Type /help for commands"
+                    <TextBlock Text="Enter to send | Shift+Enter for new line | /help for commands"
                                FontSize="10"
                                Foreground="{DynamicResource {x:Static vsui:EnvironmentColors.ControlLinkTextBrushKey}}"
                                VerticalAlignment="Center"
