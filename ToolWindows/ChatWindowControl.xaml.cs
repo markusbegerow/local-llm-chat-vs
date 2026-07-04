@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -61,8 +62,12 @@ namespace LocalLLMChatVS.ToolWindows
 
         private void InputTextBox_KeyDown(object sender, KeyEventArgs e)
         {
-            // Enter to send, Shift+Enter for new line
             if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None)
+            {
+                e.Handled = true;
+                _ = SendMessageAsync();
+            }
+            else if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.Control)
             {
                 e.Handled = true;
                 _ = SendMessageAsync();
@@ -103,12 +108,44 @@ namespace LocalLLMChatVS.ToolWindows
                 chatMessages.Clear();
                 chatMessages.AddRange(trimmedMessages);
 
-                // Call LLM
-                string response = await llmService.CallLLMAsync(chatMessages, options);
+                // Call LLM (streaming or non-streaming)
+                string response;
+                if (options.EnableStreaming)
+                {
+                    // Placeholder messages updated live as tokens arrive
+                    MessageDisplay thinkingMsg = null;
+                    var assistantMsg = new MessageDisplay { Role = "assistant", Content = "" };
+                    displayMessages.Add(assistantMsg);
+                    ScrollToBottom();
 
-                // Add assistant response
+                    response = await llmService.CallLLMStreamAsync(
+                        chatMessages,
+                        options,
+                        onToken: token =>
+                        {
+                            assistantMsg.Content += token;
+                            ScrollToBottom();
+                        },
+                        onThinking: token =>
+                        {
+                            if (!options.ShowThinkingContent) return;
+                            if (thinkingMsg == null)
+                            {
+                                thinkingMsg = new MessageDisplay { Role = "thinking", Content = "" };
+                                // Insert thinking above the assistant placeholder
+                                int idx = displayMessages.IndexOf(assistantMsg);
+                                displayMessages.Insert(idx, thinkingMsg);
+                            }
+                            thinkingMsg.Content += token;
+                        });
+                }
+                else
+                {
+                    response = await llmService.CallLLMAsync(chatMessages, options);
+                    AppendMessage("assistant", response);
+                }
+
                 chatMessages.Add(new ChatMessage("assistant", response));
-                AppendMessage("assistant", response);
 
                 // Extract and suggest files
                 var fileSuggestions = llmService.ExtractFileSuggestions(response);
@@ -309,8 +346,11 @@ namespace LocalLLMChatVS.ToolWindows
         public void AppendMessage(string role, string content)
         {
             displayMessages.Add(new MessageDisplay { Role = role, Content = content });
+            ScrollToBottom();
+        }
 
-            // Scroll to bottom
+        private void ScrollToBottom()
+        {
             ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
             {
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -344,9 +384,22 @@ namespace LocalLLMChatVS.ToolWindows
         }
     }
 
-    public class MessageDisplay
+    public class MessageDisplay : INotifyPropertyChanged
     {
+        private string _content;
+
         public string Role { get; set; }
-        public string Content { get; set; }
+
+        public string Content
+        {
+            get => _content;
+            set
+            {
+                _content = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Content)));
+            }
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
     }
 }
