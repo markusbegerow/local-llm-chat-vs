@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
@@ -47,16 +48,27 @@ namespace LocalLLMChatVS.Services
             }
 
             // Build request
-            var request = new
+            var requestObj = new JObject
             {
-                model = options.ModelName,
-                messages = messages.Select(m => new { role = m.Role, content = m.Content }).ToArray(),
-                temperature = options.Temperature,
-                max_tokens = options.MaxTokens,
-                stream = false
+                ["model"] = options.ModelName,
+                ["messages"] = JArray.FromObject(messages.Select(m => new { role = m.Role, content = m.Content }).ToArray()),
+                ["stream"] = false
             };
 
-            string jsonRequest = JsonConvert.SerializeObject(request);
+            if (options.SendTemperature) requestObj["temperature"] = options.Temperature;
+            if (options.SendMaxTokens) requestObj["max_tokens"] = options.MaxTokens;
+            if (options.SendTopP) requestObj["top_p"] = options.TopP;
+            if (options.SendPresencePenalty) requestObj["presence_penalty"] = options.PresencePenalty;
+            if (options.SendFrequencyPenalty) requestObj["frequency_penalty"] = options.FrequencyPenalty;
+
+            if (options.EnableOllamaParameters)
+            {
+                requestObj["top_k"] = options.TopK;
+                requestObj["min_p"] = options.MinP;
+                requestObj["repeat_penalty"] = options.RepeatPenalty;
+            }
+
+            string jsonRequest = JsonConvert.SerializeObject(requestObj);
 
             using (var httpRequest = new HttpRequestMessage(HttpMethod.Post, options.ApiUrl))
             {
@@ -81,7 +93,7 @@ namespace LocalLLMChatVS.Services
                         {
                             string errorText = await response.Content.ReadAsStringAsync();
                             throw new HttpRequestException(
-                                $"LLM API error ({(int)response.StatusCode}): {errorText}");
+                                $"LLM API error ({(int)response.StatusCode}): {errorText}\n\nRequest sent:\n{jsonRequest}");
                         }
 
                         string jsonResponse = await response.Content.ReadAsStringAsync();
@@ -107,6 +119,131 @@ namespace LocalLLMChatVS.Services
                         }
 
                         return content.Trim();
+                    }
+                    catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+                    {
+                        throw new TimeoutException($"Request timed out after {options.RequestTimeout / 1000} seconds");
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Calls the LLM API with streaming enabled, firing callbacks for each token.
+        /// Returns the full concatenated content when done.
+        /// </summary>
+        public async Task<string> CallLLMStreamAsync(
+            List<ChatMessage> messages,
+            GeneralOptions options,
+            Action<string> onToken,
+            Action<string> onThinking,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(options.ModelName))
+                throw new InvalidOperationException("Model name is not configured. Please set it in Tools > Options > Local LLM Chat.");
+
+            if (string.IsNullOrWhiteSpace(options.ApiUrl))
+                throw new InvalidOperationException("API URL is not configured. Please set it in Tools > Options > Local LLM Chat.");
+
+            if (!SecurityValidator.ValidateUrl(options.ApiUrl))
+                throw new InvalidOperationException($"Invalid API URL: {options.ApiUrl}");
+
+            var requestObj = new JObject
+            {
+                ["model"] = options.ModelName,
+                ["messages"] = JArray.FromObject(messages.Select(m => new { role = m.Role, content = m.Content }).ToArray()),
+                ["stream"] = true
+            };
+
+            if (options.SendTemperature) requestObj["temperature"] = options.Temperature;
+            if (options.SendMaxTokens) requestObj["max_tokens"] = options.MaxTokens;
+            if (options.SendTopP) requestObj["top_p"] = options.TopP;
+            if (options.SendPresencePenalty) requestObj["presence_penalty"] = options.PresencePenalty;
+            if (options.SendFrequencyPenalty) requestObj["frequency_penalty"] = options.FrequencyPenalty;
+
+            if (options.EnableOllamaParameters)
+            {
+                requestObj["top_k"] = options.TopK;
+                requestObj["min_p"] = options.MinP;
+                requestObj["repeat_penalty"] = options.RepeatPenalty;
+            }
+
+            string jsonRequest = JsonConvert.SerializeObject(requestObj);
+
+            using (var httpRequest = new HttpRequestMessage(HttpMethod.Post, options.ApiUrl))
+            {
+                httpRequest.Content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
+
+                if (!string.IsNullOrWhiteSpace(options.ApiToken))
+                    httpRequest.Headers.Add("Authorization", $"Bearer {options.ApiToken}");
+
+                using (var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+                {
+                    cts.CancelAfter(options.RequestTimeout);
+
+                    try
+                    {
+                        var response = await httpClient.SendAsync(
+                            httpRequest,
+                            HttpCompletionOption.ResponseHeadersRead,
+                            cts.Token);
+
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            string errorText = await response.Content.ReadAsStringAsync();
+                            throw new HttpRequestException(
+                                $"LLM API error ({(int)response.StatusCode}): {errorText}\n\nRequest sent:\n{jsonRequest}");
+                        }
+
+                        var contentBuilder = new StringBuilder();
+                        var thinkingBuilder = new StringBuilder();
+
+                        using (var stream = await response.Content.ReadAsStreamAsync())
+                        using (var reader = new StreamReader(stream))
+                        {
+                            while (!reader.EndOfStream)
+                            {
+                                string line = await reader.ReadLineAsync();
+                                if (string.IsNullOrWhiteSpace(line)) continue;
+                                if (!line.StartsWith("data: ")) continue;
+
+                                string data = line.Substring(6).Trim();
+                                if (data == "[DONE]") break;
+
+                                JObject chunk;
+                                try { chunk = JObject.Parse(data); }
+                                catch { continue; }
+
+                                var delta = chunk["choices"]?[0]?["delta"];
+                                if (delta == null) continue;
+
+                                string tokenContent = delta["content"]?.ToString();
+                                string tokenThinking = delta["reasoning_content"]?.ToString();
+
+                                if (!string.IsNullOrEmpty(tokenContent))
+                                {
+                                    contentBuilder.Append(tokenContent);
+                                    onToken?.Invoke(tokenContent);
+                                }
+
+                                if (!string.IsNullOrEmpty(tokenThinking))
+                                {
+                                    thinkingBuilder.Append(tokenThinking);
+                                    onThinking?.Invoke(tokenThinking);
+                                }
+                            }
+                        }
+
+                        string result = contentBuilder.ToString().Trim();
+
+                        if (string.IsNullOrEmpty(result))
+                        {
+                            result = thinkingBuilder.ToString().Trim();
+                            if (string.IsNullOrEmpty(result))
+                                throw new InvalidOperationException("Empty response from LLM");
+                        }
+
+                        return result;
                     }
                     catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
                     {

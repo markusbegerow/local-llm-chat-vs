@@ -27,6 +27,12 @@ namespace LocalLLMChatVS
 
             Instance = this;
 
+            // DialogPage only loads persisted settings from storage when the shell
+            // is about to display it in Tools > Options. Without this, a chat request
+            // sent before the user ever opens Options in this session would read the
+            // hardcoded property defaults instead of previously saved values.
+            ((GeneralOptions)GetDialogPage(typeof(GeneralOptions))).LoadSettingsFromStorage();
+
             await OpenChatCommand.InitializeAsync(this);
             await ClearConversationCommand.InitializeAsync(this);
             await SendFileToChatCommand.InitializeAsync(this);
